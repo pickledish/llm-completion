@@ -1,0 +1,16 @@
+[
+    {
+        "keys": ["tab"],
+        "command": "accept_inline_completion",
+        "context": [
+            { "key": "llm_inline_completion_visible", "operator": "equal", "operand": true }
+        ]
+    },
+    {
+        "keys": ["escape"],
+        "command": "dismiss_inline_completion",
+        "context": [
+            { "key": "llm_inline_completion_visible", "operator": "equal", "operand": true }
+        ]
+    }
+]

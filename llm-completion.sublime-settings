@@ -1,0 +1,54 @@
+//
+// LLM Completion Plugin Settings
+//
+// This plugin provides inline LLM code completion for Sublime Text.
+// Configure your LLM assistant settings below to enable code completion.
+//
+{
+    // Inline code completion settings
+    "inline_completion_enabled": true,
+    
+    // Delay before triggering inline completion (in seconds)
+    "inline_completion_delay": 0.5,
+    
+    // Number of lines before cursor to include in completion context
+    "inline_completion_context_before": 10,
+    
+    // Number of lines after cursor to include in completion context
+    "inline_completion_context_after": 5,
+
+    // LLM configuration for code completion
+    "llm_settings": {
+        // The model that generates the completion
+        // Generally "gpt-4o-mini", "gpt-4o", or for local: "codellama:7b", etc.
+        // Learn more at https://beta.openai.com/docs/models
+        "model": "gpt-4o-mini",
+
+        // System message for code completion
+        "system_message": "You are a senior developer who writes clean, correct code. Only return the completion text without explanation.",
+
+        // API endpoint URL
+        // For OpenAI: "https://api.openai.com/v1/chat/completions"
+        // For Ollama: "http://localhost:11434/v1/chat/completions" 
+        // For other providers: check their documentation
+        "url": "https://api.openai.com/v1/chat/completions",
+
+        // Your API token (not needed for local LLMs like Ollama)
+        "token": "YOUR_API_TOKEN_HERE",
+
+        // Sampling temperature (0-2). Lower = more deterministic
+        "temperature": 0.2,
+
+        // Request timeout in seconds
+        "timeout": 30
+    }
+
+    // Example configuration for local Ollama:
+    // "llm_settings": {
+    //     "model": "codellama:7b",
+    //     "system_message": "You are a senior developer who writes clean, correct code. Only return the completion text without explanation.",
+    //     "url": "http://localhost:11434/v1/chat/completions",
+    //     "temperature": 0.2,
+    //     "timeout": 30
+    // }
+}
