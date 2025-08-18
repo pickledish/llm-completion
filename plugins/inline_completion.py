@@ -181,7 +181,7 @@ class InlineCompletionManager:
             context_with_placeholder = context.replace('<CURSOR>', '█')
             
             # Prepare completion prompt using the template
-            completion_prompt = COMPLETION_PROMPT_TEMPLATE.format(context_with_placeholder=context_with_placeholder)
+            completion_prompt = COMPLETION_PROMPT_TEMPLATE.replace('{context_with_placeholder}', context_with_placeholder)
             
             print(f"[LLM_COMPLETION] Making OpenAI request")
             

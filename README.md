@@ -25,6 +25,8 @@ So, big thank you to those two projects for doing all the actual work here!
 
 ## Installation
 
+Requires Sublime Text build `4050` or newer (python 3.8).
+
 **Manual Installation** -- I haven't uploaded this plugin to Package Control, so this is the only way:
 
 1. Go to `Preferences` -> `Browse Packages`
