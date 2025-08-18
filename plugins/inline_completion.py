@@ -16,6 +16,59 @@ from .openai_base import CommonMethods
 
 logger = logging.getLogger(__name__)
 
+COMPLETION_PROMPT_TEMPLATE = """I will give you a code snippet with a part missing, represented by the character █.
+
+Please rewrite the code exactly as I showed you, except with the missing part represented by █ should be filled in.
+
+Focus on a solution which is concise, straightforward, simple, and above all, correct syntax.
+
+Be sure to rewrite the entire snippet.
+
+Your response should never contain a █ symbol.
+
+Here is an example:
+
+## INPUT
+
+```
+  const newConnection = async ({
+    hostname,
+    port,
+    username,
+    password,
+  } : {
+    hostname: string;
+    port: number;
+    █
+    password: string;
+  }) => {
+    let endpoint = `${hostname}:${port}`;
+```
+
+## You respond:
+
+  const newConnection = async ({
+    hostname,
+    port,
+    username,
+    password,
+  } : {
+    hostname: string;
+    port: number;
+    username: string;
+    password: string;
+  }) => {
+    let endpoint = `${hostname}:${port}`;
+
+Okay, now here is the real task.
+
+## INPUT
+
+```
+{context_with_placeholder}
+```
+"""
+
 
 class InlineCompletionManager:
     def __init__(self, view: View):
@@ -127,53 +180,8 @@ class InlineCompletionManager:
             # Replace <CURSOR> with █ for the new prompt format
             context_with_placeholder = context.replace('<CURSOR>', '█')
             
-            # Prepare completion prompt using the more effective format
-            completion_prompt = f"""I will give you a code snippet with a part missing, represented by the character █.
-
-Please rewrite the code exactly as I showed you, except with the missing part represented by █ should be filled in.
-
-Focus on a solution which is concise, straightforward, simple, and above all, correct syntax.
-
-Be sure to rewrite the entire snippet.
-
-Your response should never contain a █ symbol.
-
-Here is an example:
-
-## INPUT
-
-```
-    new Monitor(stack, `monitor`, (
-      type: "metric alert",
-      name: `ECS Service  Scaled to Maximum Capacity`,
-      query: `min(last_30m):max(count:container.uptime)
-      monitorThresholds: (
-        critical: threshold,
-        █
-      ),
-    ));
-```
-
-## You respond:
-
-    new Monitor(stack, `monitor`, (
-      type: "metric alert",
-      name: `ECS Service  Scaled to Maximum Capacity`,
-      query: `min(last_30m):max(count:container.uptime)
-      monitorThresholds: (
-        critical: threshold,
-        warning: threshold * 0.8,
-      ),
-    ));
-
-Okay, now here is the real task.
-
-## INPUT
-
-```
-{context_with_placeholder}
-```
-"""
+            # Prepare completion prompt using the template
+            completion_prompt = COMPLETION_PROMPT_TEMPLATE.format(context_with_placeholder=context_with_placeholder)
             
             print(f"[LLM_COMPLETION] Making OpenAI request")
             
