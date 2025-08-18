@@ -19,7 +19,7 @@ So, big thank you to those two projects for doing all the actual work here!
 
 - **Inline Code Completion**: Get AI-powered code suggestions as you type
 - **Intelligent Context**: Uses surrounding code context for better completions
-- **Multiple AI Providers**: Works with OpenAI, local LLMs via Ollama, llama.cpp, and other OpenAI-compatible APIs
+- **Multiple AI Providers**: Works with OpenAI, local LLMs via e.g. Ollama, and other OpenAI-compatible APIs
 - **Configurable**: Adjustable completion delay, context size, and AI model settings
 - **Lightweight**: Focused solely on code completion without bloat
 
