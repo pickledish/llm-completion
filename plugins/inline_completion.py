@@ -16,57 +16,62 @@ from .openai_base import CommonMethods
 
 logger = logging.getLogger(__name__)
 
-COMPLETION_PROMPT_TEMPLATE = """I will give you a code snippet with a part missing, represented by the character █.
+COMPLETION_PROMPT_TEMPLATE = """I will give you a code snippet which is incomplete, a work in progress.
 
-Please rewrite the code exactly as I showed you, except with the missing part represented by █ should be filled in.
+The place which is incomplete is marked by the character █.
 
-Focus on a solution which is concise, straightforward, simple, and above all, correct syntax.
+Your task is to rewrite the line with the █ character, producing the minimal viable code to make the snippet sensible and syntactically correct.
 
-Be sure to rewrite the entire snippet.
+Your response should never contain the █ symbol, only the filled-out line.
 
-Your response should never contain a █ symbol.
+IMPORTANT: Your completed line MUST begin with all the text that is currently written on that line (before the █ symbol). You must preserve this existing text exactly and only add to it.
 
 Here is an example:
 
-## INPUT
+## CONTEXT
 
 ```
-  const newConnection = async ({
-    hostname,
-    port,
-    username,
-    password,
-  } : {
-    hostname: string;
-    port: number;
-    █
-    password: string;
-  }) => {
-    let endpoint = `${hostname}:${port}`;
+const newConnection = async ({
+  hostname,
+  port,
+  username,
+  password,
+} : {
+  hostname: string;
+  port: number;
+  █
+  password: string;
+}) => {
+  let endpoint = ${hostname}:${port};
 ```
 
-## You respond:
+## THE LINE YOU NEED TO COMPLETE
 
-  const newConnection = async ({
-    hostname,
-    port,
-    username,
-    password,
-  } : {
-    hostname: string;
-    port: number;
-    username: string;
-    password: string;
-  }) => {
-    let endpoint = `${hostname}:${port}`;
+```
+  █
+```
+
+## YOUR RESPONSE:
+
+```
+  username: string;
+```
 
 Okay, now here is the real task.
 
-## INPUT
+## CONTEXT
 
 ```
 {context_with_placeholder}
 ```
+
+## THE LINE YOU NEED TO COMPLETE
+
+```
+{line_with_placeholder}
+```
+
+## YOUR RESPONSE:
 """
 
 
@@ -125,7 +130,7 @@ class InlineCompletionManager:
         # Check character before cursor - don't trigger after logical line endings
         if cursor_point > 0:
             char_before = self.view.substr(cursor_point - 1)
-            logical_endings = {',', '}', ')', ']', ';', ':', '.'}
+            logical_endings = {',', '}', ')', ']', ';', '.'}
             if char_before in logical_endings:
                 print(f"[LLM_COMPLETION] Character before cursor is logical ending: '{char_before}', skipping")
                 return False
@@ -180,8 +185,17 @@ class InlineCompletionManager:
             # Replace <CURSOR> with █ for the new prompt format
             context_with_placeholder = context.replace('<CURSOR>', '█')
             
+            # Find the line with the placeholder
+            lines = context_with_placeholder.split('\n')
+            line_with_placeholder = ""
+            for line in lines:
+                if '█' in line:
+                    line_with_placeholder = line
+                    break
+            
             # Prepare completion prompt using the template
             completion_prompt = COMPLETION_PROMPT_TEMPLATE.replace('{context_with_placeholder}', context_with_placeholder)
+            completion_prompt = completion_prompt.replace('{line_with_placeholder}', line_with_placeholder)
             
             print(f"[LLM_COMPLETION] Making OpenAI request")
             
@@ -284,24 +298,40 @@ class InlineCompletionManager:
     
     def _clean_completion_text(self, completion_text: str) -> str:
         """Clean completion text while preserving important whitespace."""
-        # Remove markdown code blocks if present
         cleaned = completion_text
-        if cleaned.strip().startswith('```'):
-            lines = cleaned.split('\n')
-            if len(lines) > 2 and lines[-1].strip() == '```':
-                # Remove first and last lines (```language and ```)
-                cleaned = '\n'.join(lines[1:-1])
+
+        # Remove leading backticks with optional language identifier and newline
+        if cleaned.lstrip().startswith('```'):
+            # Find the position after the opening backticks
+            stripped_start = cleaned.lstrip()
+            start_backticks_idx = stripped_start.find('```')
+            if start_backticks_idx == 0:
+                # Find the newline after the backticks (and optional language identifier)
+                after_backticks = stripped_start[3:]  # Skip the ```
+                newline_idx = after_backticks.find('\n')
+                if newline_idx != -1:
+                    # Remove everything up to and including the newline
+                    leading_whitespace = cleaned[:len(cleaned) - len(stripped_start)]
+                    cleaned = leading_whitespace + after_backticks[newline_idx + 1:]
+                else:
+                    # No newline after backticks, just remove the backticks
+                    leading_whitespace = cleaned[:len(cleaned) - len(stripped_start)]
+                    cleaned = leading_whitespace + after_backticks
+
+        # Remove trailing backticks with optional preceding newline
+        if cleaned.rstrip().endswith('```'):
+            stripped_end = cleaned.rstrip()
+            # Check if there's a newline before the closing backticks
+            if len(stripped_end) >= 4 and stripped_end[-4] == '\n':
+                # Remove newline and backticks
+                cleaned = stripped_end[:-4] + cleaned[len(stripped_end):]
             else:
-                # Malformed code block, just remove the first ```
-                cleaned = cleaned.strip()
-                if cleaned.startswith('```'):
-                    first_newline = cleaned.find('\n')
-                    if first_newline != -1:
-                        cleaned = cleaned[first_newline + 1:]
-                
+                # Just remove the backticks
+                cleaned = stripped_end[:-3] + cleaned[len(stripped_end):]
+
         # Only trim trailing whitespace, preserve leading whitespace and internal structure
         cleaned = cleaned.rstrip()
-        
+
         return cleaned
     
     def _extract_completion_from_response(self, response_text: str, original_context: str, cursor_point: int) -> str:
@@ -309,85 +339,58 @@ class InlineCompletionManager:
         
         # First, clean the response to remove markdown code blocks
         cleaned_response = self._clean_completion_text(response_text)
-        
-        # Find the █ character position in the original context
-        placeholder_pos = original_context.find('█')
-        if placeholder_pos == -1:
-            return ""
-        
-        # Split the original context into before and after parts
-        context_before = original_context[:placeholder_pos]
-        context_after = original_context[placeholder_pos + 1:]
-        
-        # Strip whitespace from both context and response for better matching
-        stripped_context_before = context_before.strip()
-        stripped_cleaned_response = cleaned_response.strip()
 
-        # Use regex to find where the context before ends and completion should start
-        escaped_context_before = re.escape(stripped_context_before)
+        # Find the line with the placeholder in the original context
+        lines = original_context.split('\n')
+        line_with_placeholder = ""
+        for line in lines:
+            if '█' in line:
+                line_with_placeholder = line
+                break
+        
+        if not line_with_placeholder:
+            return cleaned_response.strip()
 
-        # Try full context first
-        match = re.search(escaped_context_before, stripped_cleaned_response)
-        if match:
-            completion_start = match.end()
+        # Find what was before and after the placeholder on that line
+        placeholder_pos_in_line = line_with_placeholder.find('█')
+        line_before_placeholder = line_with_placeholder[:placeholder_pos_in_line]
+        line_after_placeholder = line_with_placeholder[placeholder_pos_in_line + 1:]
+
+        # Our completion is the LLM's response, with the line's original content stripped out
+        completion = cleaned_response
+        
+        print(f"[DEBUG] line_before_placeholder: {repr(line_before_placeholder)}")
+        print(f"[DEBUG] cleaned_response: {repr(cleaned_response)}")
+        
+        # Try exact match first
+        if completion.startswith(line_before_placeholder):
+            completion = completion[len(line_before_placeholder):]
+            print(f"[DEBUG] Exact match, result: {repr(completion)}")
         else:
-            # Try fallback: last 30 characters of context_before
-            fallback_context = stripped_context_before[-30:] if len(stripped_context_before) > 30 else stripped_context_before
-            escaped_fallback = re.escape(fallback_context)
+            # Handle indentation differences by stripping only leading whitespace
+            line_before_no_indent = line_before_placeholder.lstrip(' \t')
+            completion_no_indent = completion.lstrip(' \t')
             
-            match = re.search(escaped_fallback, stripped_cleaned_response)
-            if match:
-                completion_start = match.end()
-            else:
-                # Final fallback: assume response starts with completion
-                completion = stripped_cleaned_response
-                if len(completion) > 500:
-                    return "█"
-                return completion
-        
-        # Look for the after part to determine where completion ends
-        after_pos = -1
-        if context_after.strip():  # Only look for after context if it's not empty/whitespace
-            stripped_context_after = context_after.strip()
-            escaped_context_after = re.escape(stripped_context_after)
-
-            # Try full context_after first
-            after_match = re.search(escaped_context_after, stripped_cleaned_response[completion_start:])
-            if after_match:
-                after_pos = completion_start + after_match.start()
-            else:
-                # Try fallback: first 30 characters of context_after
-                fallback_after_context = stripped_context_after[:30] if len(stripped_context_after) > 30 else stripped_context_after
-                escaped_fallback_after = re.escape(fallback_after_context)
-                
-                after_match = re.search(escaped_fallback_after, stripped_cleaned_response[completion_start:])
-                if after_match:
-                    after_pos = completion_start + after_match.start()
-        
-        # Extract the completion
-        if after_pos != -1:
-            # Found both before and after context - extract between them
-            completion = stripped_cleaned_response[completion_start:after_pos]
-        else:
-            # No after context found - this is common when LLM provides good completion but doesn't reproduce after_context
-            completion = stripped_cleaned_response[completion_start:]
+            print(f"[DEBUG] line_before_no_indent: {repr(line_before_no_indent)}")
+            print(f"[DEBUG] completion_no_indent: {repr(completion_no_indent)}")
             
-            # Since we successfully matched before_context, be more lenient with completion length
-            # Only reject if it's extremely long (likely indicating the LLM reproduced lots of unrelated content)
-            if len(completion.strip()) > 2000:  # More permissive threshold since we have good before_context anchor
-                return "█"
-
-        # Clean up the completion
-        completion = completion.strip()
+            if line_before_no_indent and completion_no_indent.startswith(line_before_no_indent):
+                # Remove the matching content entirely, no indentation preservation needed
+                completion = completion_no_indent[len(line_before_no_indent):]
+                print(f"[DEBUG] Indentation mismatch handled, result: {repr(completion)}")
+            elif not line_before_no_indent:
+                # Cursor is on indentation-only line, just use LLM's content without its indentation
+                completion = completion_no_indent
+                print(f"[DEBUG] Indentation-only line, using content: {repr(completion)}")
+            else:
+                # No valid match - consider response invalid
+                print(f"[DEBUG] No valid match found, response invalid")
+                return ""
         
-        # Validate that we actually extracted something meaningful
-        if not completion:
-            return "█"
-
-        # Check if the completion is suspiciously long (might indicate extraction failed)
-        if len(completion) > 1000:  # Arbitrary threshold for "too long"
-            return "█"
-
+        # We only strip the suffix if the LLM returned it. It may not have, if it's a good completion.
+        if line_after_placeholder and completion.endswith(line_after_placeholder):
+            completion = completion[:-len(line_after_placeholder)]
+            
         return completion
         
     def _create_phantom_html(self, completion_text: str) -> str:
